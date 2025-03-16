@@ -21,7 +21,7 @@ train_datagen = ImageDataGenerator(
 # Load training dataset
 train_set = train_datagen.flow_from_directory(
     train_dir,
-    target_size=(416, 416),
+    target_size=(224, 224),
     batch_size=32,
     class_mode='categorical')
 
@@ -45,3 +45,16 @@ test_set = test_datagen.flow_from_directory(
 
 # Print class indices
 print("Class indices:", train_set.class_indices)
+
+# Display a few sample images from the training set
+sample_images, sample_labels = next(train_set)
+plt.figure(figsize=(10, 10))
+for i in range(9):
+    ax = plt.subplot(3, 3, i+1)
+    plt.imshow(sample_images[i])
+    # Get class label name from the generator's class_indices dictionary
+    class_indices = {v: k for k, v in train_set.class_indices.items()}
+    plt.title(class_indices[np.argmax(sample_labels[i])])
+    plt.axis("off")
+plt.tight_layout()
+plt.show()
