@@ -21,7 +21,7 @@ train_datagen = ImageDataGenerator(
 # Load training dataset
 train_set = train_datagen.flow_from_directory(
     train_dir,
-    target_size=(224, 224),
+    target_size=(416, 416),
     batch_size=32,
     class_mode='categorical')
 
