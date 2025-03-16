@@ -44,4 +44,4 @@ test_set = test_datagen.flow_from_directory(
     class_mode='categorical')
 
 # Print class indices
-print("Class indices:", train_generator.class_indices)
+print("Class indices:", train_set.class_indices)
