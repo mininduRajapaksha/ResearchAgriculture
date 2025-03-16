@@ -5,9 +5,9 @@ import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
 
-train_dir = 'D:/Research project/Datasets/banana_classification/train'
-test_dir = 'D:/Research project/Datasets/banana_classification/test'
-valid_dir = 'D:/Research project/Datasets/banana_classification/valid'
+train_dir = 'D:/Research project/Datasets/Banana Dataset/Train'
+test_dir = 'D:/Research project/Datasets/Banana Dataset/Test'
+valid_dir = 'D:/Research project/Datasets/Banana Dataset/Valid'
 
 # Set image dimensions and batch size
 img_height = 416
