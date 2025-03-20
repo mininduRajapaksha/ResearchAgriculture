@@ -73,4 +73,9 @@ model = Sequential([
     Conv2D(64, (3, 3), activation='relu'),
     MaxPooling2D((2, 2)),
     BatchNormalization(),
+
+    # Third convolutional block
+    Conv2D(128, (3, 3), activation='relu'),
+    MaxPooling2D((2, 2)),
+    BatchNormalization(),
 ])
