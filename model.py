@@ -64,5 +64,9 @@ plt.show()
 
 # Build the CNN model
 model = Sequential([
+    # First convolutional block
+    Conv2D(32, (3, 3), activation='relu', input_shape=(416, 416, 3)),
+    MaxPooling2D((2, 2)),
+    BatchNormalization(),
 
 ])
