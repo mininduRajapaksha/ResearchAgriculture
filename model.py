@@ -3,8 +3,11 @@ os.environ['KMP_DUPLICATE_LIB_OK']='TRUE'
 # import cv2
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
 import matplotlib.pyplot as plt
 from keras.preprocessing.image import ImageDataGenerator
+
 
 #defining the paths
 train_dir = 'D:/Research project/Datasets/Banana Dataset/Train'
@@ -58,3 +61,8 @@ for i in range(9):
     plt.axis("off")
 plt.tight_layout()
 plt.show()
+
+# Build the CNN model
+model = Sequential([
+
+])
