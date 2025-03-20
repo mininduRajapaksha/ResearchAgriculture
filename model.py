@@ -78,4 +78,10 @@ model = Sequential([
     Conv2D(128, (3, 3), activation='relu'),
     MaxPooling2D((2, 2)),
     BatchNormalization(),
+
+    # Flatten and dense layers
+    Flatten(),
+    Dropout(0.5),
+    Dense(128, activation='relu'),
+    Dense(3, activation='softmax') # 3 classes: fresh, rotten, unripe
 ])
