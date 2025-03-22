@@ -50,17 +50,17 @@ test_set = test_datagen.flow_from_directory(
 print("Class indices:", train_set.class_indices)
 
 # Display a few sample images from the training set
-sample_images, sample_labels = next(train_set)
-plt.figure(figsize=(10, 10))
-for i in range(9):
-    ax = plt.subplot(3, 3, i+1)
-    plt.imshow(sample_images[i])
-    # Get class label name from the generator's class_indices dictionary
-    class_indices = {v: k for k, v in train_set.class_indices.items()}
-    plt.title(class_indices[np.argmax(sample_labels[i])])
-    plt.axis("off")
-plt.tight_layout()
-plt.show()
+# sample_images, sample_labels = next(train_set)
+# plt.figure(figsize=(10, 10))
+# for i in range(9):
+#     ax = plt.subplot(3, 3, i+1)
+#     plt.imshow(sample_images[i])
+#     # Get class label name from the generator's class_indices dictionary
+#     class_indices = {v: k for k, v in train_set.class_indices.items()}
+#     plt.title(class_indices[np.argmax(sample_labels[i])])
+#     plt.axis("off")
+# plt.tight_layout()
+# plt.show()
 
 # Build the CNN model
 model = Sequential([
@@ -93,3 +93,10 @@ model.compile(optimizer='adam',
 
 # Display the model's architecture
 model.summary()
+
+epochs = 10 # Increase the number of epochs to train the model longer
+history = model.fit(
+    train_set,
+    validation_data=val_set,
+    epochs=epochs
+)
