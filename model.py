@@ -94,9 +94,14 @@ model.compile(optimizer='adam',
 # Display the model's architecture
 model.summary()
 
+# Train the model
 epochs = 10 # Increase the number of epochs to train the model longer
 history = model.fit(
     train_set,
     validation_data=val_set,
     epochs=epochs
 )
+
+# Evaluate the model on the test dataset
+test_loss, test_accuracy = model.evaluate(test_set)
+print("Test Accuracy:", test_accuracy)
