@@ -85,3 +85,11 @@ model = Sequential([
     Dense(128, activation='relu'),
     Dense(3, activation='softmax') # 3 classes: fresh, rotten, unripe
 ])
+
+# Compile the model
+model.compile(optimizer='adam',
+              loss='categorical_crossentropy',
+              metrics=['accuracy'])
+
+# Display the model's architecture
+model.summary()
