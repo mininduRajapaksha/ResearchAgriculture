@@ -103,8 +103,7 @@ history = model.fit(
     epochs=epochs
 )
 
-
-# Save the model
+# Save the traing history to a JSON file
 with open('history.json', 'w') as f:
     json.dump(history.history, f)
 
@@ -112,4 +111,28 @@ with open('history.json', 'w') as f:
 test_loss, test_accuracy = model.evaluate(test_set)
 print("Test Accuracy:", test_accuracy)
 
+# Load the training history from a JSON file
+with open('history.json', 'r') as f:
+    history = json.load(f)
 
+# Plot Training and Validation Accuracy
+plt.figure(figsize=(8, 6))
+plt.plot(history['accuracy'], label='Training Accuracy')
+plt.plot(history['val_accuracy'], label='Validation Accuracy')
+plt.title('Model Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.savefig('accuracy.png')
+plt.show()
+
+# Plot Training and Validation Loss
+plt.figure(figsize=(8, 6))
+plt.plot(history['loss'], label='Training Loss')
+plt.plot(history['val_loss'], label='Validation Loss')
+plt.title('Model Loss')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.savefig('loss.png')
+plt.show()
