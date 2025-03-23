@@ -7,6 +7,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout, BatchNormalization
 import matplotlib.pyplot as plt
 from keras.preprocessing.image import ImageDataGenerator
+import json
 
 
 #defining the paths
@@ -102,6 +103,13 @@ history = model.fit(
     epochs=epochs
 )
 
+
+# Save the model
+with open('history.json', 'w') as f:
+    json.dump(history.history, f)
+
 # Evaluate the model on the test dataset
 test_loss, test_accuracy = model.evaluate(test_set)
 print("Test Accuracy:", test_accuracy)
+
+
