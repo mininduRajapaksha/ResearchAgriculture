@@ -1,0 +1,56 @@
+from keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import matplotlib.pyplot as plt
+
+#defining the paths
+train_dir = 'D:/Research project/Datasets/Banana Dataset/Train'
+test_dir = 'D:/Research project/Datasets/Banana Dataset/Test'
+valid_dir = 'D:/Research project/Datasets/Banana Dataset/Valid'
+
+#data augmentation and preprocessing
+train_datagen = ImageDataGenerator(
+    rescale=1./255,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True)
+
+# Load training dataset
+train_set = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=(416, 416),
+    batch_size=32,
+    class_mode='categorical')
+
+val_datagen = ImageDataGenerator(rescale=1./255)
+
+# Load validation dataset
+val_set = val_datagen.flow_from_directory(
+    valid_dir,
+    target_size=(416, 416),
+    batch_size=32,
+    class_mode='categorical')
+
+test_datagen = ImageDataGenerator(rescale=1./255)
+
+# Load test dataset
+test_set = test_datagen.flow_from_directory(
+    test_dir,
+    target_size=(416, 416),
+    batch_size=32,
+    class_mode='categorical')
+
+# Print class indices
+print("Class indices:", train_set.class_indices)
+
+# Display a few sample images from the training set
+sample_images, sample_labels = next(train_set)
+plt.figure(figsize=(10, 10))
+for i in range(9):
+    ax = plt.subplot(3, 3, i+1)
+    plt.imshow(sample_images[i])
+    # Get class label name from the generator's class_indices dictionary
+    class_indices = {v: k for k, v in train_set.class_indices.items()}
+    plt.title(class_indices[np.argmax(sample_labels[i])])
+    plt.axis("off")
+plt.tight_layout()
+plt.show()
