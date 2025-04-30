@@ -91,7 +91,7 @@ model = Sequential([
     Flatten(),
     Dropout(0.5),
     Dense(128, activation='relu'),
-    Dense(3, activation='softmax') # 3 classes: fresh, rotten, unripe
+    Dense(3, activation='softmax')
 ])
 
 # Display the model's architecture
@@ -156,7 +156,3 @@ plt.show()
 
 # Save the model
 model.save('D:/Quality Control System/banana_quality_model.h5')
-
-# Load the trained model
-model = load_model('banana_quality_model.h5')
-
