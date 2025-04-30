@@ -1,0 +1,115 @@
+{
+	"info": {
+		"_postman_id": "4225065b-affb-4f4c-ac1e-8c2bb4b80a45",
+		"name": "Research",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "26311387"
+	},
+	"item": [
+		{
+			"name": "http://127.0.0.1:5000/predict",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"Box Size 1\": \"Small Box (16 x 12 x 10)\",\r\n    \"Quantity 1\": 2,\r\n    \"Box Size 2\": \"Small Box (16 x 12 x 10)\",\r\n    \"Quantity 2\": 2,\r\n    \"Cost\": 4060\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://127.0.0.1:5000/predict"
+			},
+			"response": []
+		},
+		{
+			"name": "http://127.0.0.1:5001/predict-vehicle",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var template = `",
+							"<style type=\"text/css\">",
+							"    .tftable {font-size:14px;color:#333333;width:100%;border-width: 1px;border-color: #87ceeb;border-collapse: collapse;}",
+							"    .tftable th {font-size:18px;background-color:#87ceeb;border-width: 1px;padding: 8px;border-style: solid;border-color: #87ceeb;text-align:left;}",
+							"    .tftable tr {background-color:#ffffff;}",
+							"    .tftable td {font-size:14px;border-width: 1px;padding: 8px;border-style: solid;border-color: #87ceeb;}",
+							"    .tftable tr:hover {background-color:#e0ffff;}",
+							"</style>",
+							"",
+							"<table class=\"tftable\" border=\"1\">",
+							"    <tr>",
+							"        <th>Strategy</th>",
+							"        <th>Total Distance (km)</th>",
+							"        <th>Total Estimated Cost (LKR)</th>",
+							"        <th>Total Volume (cft)</th>",
+							"        <th>Total Weight (kg)</th>",
+							"        <th>Vehicles</th>",
+							"    </tr>",
+							"    <tr>",
+							"        <td>{{response.strategy}}</td>",
+							"        <td>{{response.total_distance_km}}</td>",
+							"        <td>{{response.total_estimated_cost_LKR}}</td>",
+							"        <td>{{response.total_volume_cft}}</td>",
+							"        <td>{{response.total_weight_kg}}</td>",
+							"        <td>{{#each response.vehicles}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</td>",
+							"    </tr>",
+							"</table>",
+							"`;",
+							"",
+							"function constructVisualizerPayload() {",
+							"    return {response: pm.response.json()}",
+							"}",
+							"",
+							"pm.visualizer.set(template, constructVisualizerPayload());"
+						],
+						"type": "text/javascript",
+						"packages": {}
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"deliveries\": [\n    {\"volume_cft\": 2465, \"weight_kg\": 3000},\n    {\"volume_cft\": 2465, \"weight_kg\": 3000},\n    {\"volume_cft\": 2465, \"weight_kg\": 3000}\n  ],\n  \"distance_km\": 4000\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://127.0.0.1:5001/predict-vehicle"
+			},
+			"response": []
+		},
+		{
+			"name": "http://localhost:3000/api/logistics/calculate",
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": {\n    \"lat\": 6.745142,\n    \"lng\": 80.129544\n  },\n  \"destinations\": [\n    {\n      \"lat\": 6.927079,\n      \"lng\": 79.861244,\n      \"deliveries\": [\n        { \"volume_cft\": 246, \"weight_kg\": 3000 },\n        { \"volume_cft\": 246, \"weight_kg\": 3000 }\n      \n      ]\n    },\n    {\n      \"lat\": 6.912257,\n      \"lng\": 79.924209,\n      \"deliveries\": [\n        { \"volume_cft\": 246, \"weight_kg\": 3000 }\n      ]\n    },\n    {\n      \"lat\": 7.290572,\n      \"lng\": 80.633726,\n      \"deliveries\": [\n        { \"volume_cft\": 1500, \"weight_kg\": 2000 }\n      ]\n    },\n    {\n      \"lat\": 6.989558,\n      \"lng\": 81.055240,\n      \"deliveries\": [\n        { \"volume_cft\": 1500, \"weight_kg\": 2000 }\n      ]\n    },\n    {\n      \"lat\": 8.92795989419753,\n      \"lng\": 79.95290445725537,\n      \"deliveries\": [\n        { \"volume_cft\": 1500, \"weight_kg\": 2000 }\n      ]\n    },\n    {\n      \"lat\": 5.968764122739534,\n      \"lng\": 80.56500273910925,\n      \"deliveries\": [\n        { \"volume_cft\": 1500, \"weight_kg\": 2000 }\n      ]\n    },\n    {\n      \"lat\": 6.949227, \n      \"lng\": 81.142373,\n      \"deliveries\": [\n        { \"volume_cft\": 1500, \"weight_kg\": 2000 }\n      ]\n    }\n  ]\n}\n",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:3000/api/logistics/calculate"
+			},
+			"response": []
+		}
+	]
+}
