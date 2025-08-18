@@ -1,7 +1,7 @@
 import os
 import csv
 import datetime
-from flask import Flask, Response, render_template, jsonify
+from flask import Flask, Response, render_template, jsonify, request
 import cv2
 import numpy as np
 from banana_detector import BananaDetector
@@ -81,32 +81,85 @@ def detection_counts():
 @app.route('/stop_video')
 def stop_video():
     global video_capture, session_start, session_counts
+    try:
+        if video_capture is not None:
+            video_capture.release()
+            video_capture = None
 
-    # release camera
-    if video_capture is not None:
-        video_capture.release()
-        video_capture = None
+        session_end = datetime.datetime.now()
 
-    # mark stop time
-    session_end = datetime.datetime.now()
+        if session_start:  # Only save if session was actually started
+            with open('banana_sessions.csv','a',newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    session_start.isoformat(),
+                    session_end.isoformat(),
+                    session_counts['fresh'],
+                    session_counts['rotten'],
+                    session_counts['unripe'],
+                    session_counts['unknown']
+                ])
+            
+            session_start = None
+            session_counts = dict.fromkeys(session_counts, 0)
+            return jsonify({"status":"stopped", "saved":True})
+        
+        return jsonify({"status":"stopped", "saved":False})
+        
+    except Exception as e:
+        print(f"Error stopping video: {e}")
+        return jsonify({"status":"error", "message":str(e)}), 500
 
-    # **persist the session record** to CSV
-    with open('banana_sessions.csv','a',newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow([
-            session_start.isoformat(),
-            session_end.isoformat(),
-            session_counts['fresh'],
-            session_counts['rotten'],
-            session_counts['unripe'],
-            session_counts['unknown']
-        ])
+@app.route('/session_info')
+def session_info():
+    if session_start:
+        duration = (datetime.datetime.now() - session_start).total_seconds()
+        return jsonify({
+            "start_time": session_start.isoformat(),
+            "duration_seconds": duration,
+            "counts": session_counts
+        })
+    return jsonify({"status": "no active session"})
 
-    # reset for next session
-    session_start = None
-    session_counts = dict.fromkeys(session_counts, 0)
+def ensure_csv_exists():
+    csv_file = 'banana_sessions.csv'
+    if not os.path.exists(csv_file):
+        with open(csv_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                'session_start',
+                'session_end',
+                'fresh_count',
+                'rotten_count',
+                'unripe_count',
+                'unknown_count'
+            ])
 
-    return jsonify({"status":"stopped","saved":True})
+# Add this line after Flask app initialization
+ensure_csv_exists()
+
+# Add this new route after your other routes
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    global video_capture
+    try:
+        # Release camera
+        if video_capture is not None:
+            video_capture.release()
+            video_capture = None
+            
+        # Save final session if active
+        if session_start:
+            stop_video()
+            
+        # Shutdown the server
+        func = request.environ.get('werkzeug.server.shutdown')
+        if func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        func()
+        return jsonify({"status": "Server shutting down..."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
