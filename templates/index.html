@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Banana Quality Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        .video-container {
+            margin: 20px auto;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #333;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #videoFeed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .results {
+            margin: 20px auto;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .quality-count {
+            display: inline-block;
+            margin: 0 15px;
+            font-size: 1.2em;
+        }
+        .status {
+            color: #666;
+            margin-top: 10px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        .button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            transition: background-color 0.3s;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        .button.stop {
+            background-color: #f44336;
+        }
+        .button.stop:hover {
+            background-color: #da190b;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Banana Quality Control System</h1>
+        <div class="controls">
+            <button id="startBtn" class="button">Start Video</button>
+            <button id="stopBtn" class="button stop hidden">Stop Video</button>
+            <button id="shutdownBtn" class="button stop">Shutdown Server</button>
+        </div>
+        <div class="video-container">
+            <img id="videoFeed" class="hidden" src="" alt="Video stream">
+        </div>
+        <div class="results">
+            <h2>Detection Results</h2>
+            <div class="quality-count">Fresh: <span id="freshCount">0</span></div>
+            <div class="quality-count">Rotten: <span id="rottenCount">0</span></div>
+            <div class="quality-count">Unripe: <span id="unripeCount">0</span></div>
+            <div class="status" id="status">Click Start Video to begin monitoring</div>
+        </div>
+    </div>
+
+    <script>
+        const videoFeed = document.getElementById('videoFeed');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        let countUpdateInterval;
+
+        startBtn.addEventListener('click', () => {
+            // Start video feed
+            videoFeed.src = "{{ url_for('video_feed') }}";
+            videoFeed.classList.remove('hidden');
+            startBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
+            status.textContent = 'Monitoring...';
+            
+            // Start count updates
+            countUpdateInterval = setInterval(updateCounts, 500);
+        });
+
+        stopBtn.addEventListener('click', () => {
+            // Stop video feed
+            videoFeed.src = "";
+            videoFeed.classList.add('hidden');
+            stopBtn.classList.add('hidden');
+            startBtn.classList.remove('hidden');
+            status.textContent = 'Monitoring stopped';
+            
+            // Stop count updates
+            clearInterval(countUpdateInterval);
+            
+            // Reset counts
+            document.getElementById('freshCount').textContent = '0';
+            document.getElementById('rottenCount').textContent = '0';
+            document.getElementById('unripeCount').textContent = '0';
+            
+            // Call stop endpoint
+            fetch('/stop_video');
+        });
+
+        document.getElementById('shutdownBtn').addEventListener('click', async () => {
+            if (confirm('Are you sure you want to shutdown the server?')) {
+                try {
+                    await fetch('/shutdown', {method: 'POST'});
+                    alert('Server shutdown initiated. You can close this window.');
+                } catch (error) {
+                    console.error('Shutdown error:', error);
+                    alert('Error shutting down server');
+                }
+            }
+        });
+
+        async function updateCounts() {
+            try {
+                const response = await fetch('/detection_counts');
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const data = await response.json();
+                
+                document.getElementById('freshCount').textContent = data.fresh;
+                document.getElementById('rottenCount').textContent = data.rotten;
+                document.getElementById('unripeCount').textContent = data.unripe;
+            } catch (error) {
+                console.error('Error fetching detection counts:', error);
+                status.textContent = 'Error updating counts';
+            }
+        }
+    </script>
+</body>
+</html>
