@@ -15,21 +15,26 @@ detector   = BananaDetector(conf_threshold=0.4)
 classifier = load_model('banana_quality_model.h5')
 CLASS_NAMES = ['fresh','rotten','unripe']
 
-# Session‐level counters & timestamps
+# Session tracking
 session_counts = {'fresh':0,'rotten':0,'unripe':0,'unknown':0}
 session_start  = None
+next_banana_id = 0
+tracked_bananas = {}   # id -> centroid
 
 def preprocess_roi(roi):
     roi = cv2.resize(roi,(224,224))
     return np.expand_dims(roi.astype('float32')/255.0,0)
 
-def gen_frames():
-    global video_capture, session_counts, session_start
+def get_centroid(x,y,w,h):
+    return (int(x+w/2), int(y+h/2))
 
-    # On first frame, mark start time and zero out session_counts
+def gen_frames():
+    global video_capture, session_counts, session_start, next_banana_id, tracked_bananas
+
     if session_start is None:
         session_start = datetime.datetime.now()
         session_counts = dict.fromkeys(session_counts, 0)
+        tracked_bananas = {}
 
     video_capture = cv2.VideoCapture(0)
     if not video_capture.isOpened():
@@ -40,8 +45,10 @@ def gen_frames():
         if not ret:
             break
 
-        # detect & classify
+        # detect bananas
         boxes = detector.detect(frame)
+        current_centroids = []
+
         for (x,y,w,h) in boxes:
             roi  = frame[y:y+h, x:x+w]
             pred = classifier.predict(preprocess_roi(roi), verbose=0)[0]
@@ -49,13 +56,27 @@ def gen_frames():
             conf = float(pred[idx])
             label = CLASS_NAMES[idx] if conf>=0.6 else 'unknown'
 
+            # track centroids to avoid double-count
+            centroid = get_centroid(x,y,w,h)
+            current_centroids.append((centroid,label))
+
+            # check if this banana is new
+            already_tracked = False
+            for b_id, (c_prev, _) in tracked_bananas.items():
+                if abs(c_prev[0]-centroid[0]) < 50 and abs(c_prev[1]-centroid[1]) < 50:
+                    tracked_bananas[b_id] = (centroid,label)  # update position
+                    already_tracked = True
+                    break
+
+            if not already_tracked:
+                tracked_bananas[next_banana_id] = (centroid,label)
+                session_counts[label] += 1
+                next_banana_id += 1
+
             # draw
             color = (0,255,0) if label=='fresh' else (0,0,255) if label=='rotten' else (255,255,0)
             cv2.rectangle(frame,(x,y),(x+w,y+h),color,2)
             cv2.putText(frame,f"{label}:{conf:.2f}",(x,y-10),cv2.FONT_HERSHEY_SIMPLEX,0.5,color,2)
-
-            # **Accumulate session total**
-            session_counts[label] += 1
 
         # stream out
         ret, buf = cv2.imencode('.jpg', frame)
@@ -74,13 +95,11 @@ def video_feed():
 
 @app.route('/detection_counts')
 def detection_counts():
-    # returns last‐frame counts if you still track those,
-    # or you could omit this now that you have session_counts
     return jsonify(session_counts)
 
 @app.route('/stop_video')
 def stop_video():
-    global video_capture, session_start, session_counts
+    global video_capture, session_start, session_counts, tracked_bananas
     try:
         if video_capture is not None:
             video_capture.release()
@@ -88,7 +107,7 @@ def stop_video():
 
         session_end = datetime.datetime.now()
 
-        if session_start:  # Only save if session was actually started
+        if session_start:
             with open('banana_sessions.csv','a',newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
@@ -102,6 +121,7 @@ def stop_video():
             
             session_start = None
             session_counts = dict.fromkeys(session_counts, 0)
+            tracked_bananas = {}
             return jsonify({"status":"stopped", "saved":True})
         
         return jsonify({"status":"stopped", "saved":False})
@@ -135,31 +155,28 @@ def ensure_csv_exists():
                 'unknown_count'
             ])
 
-# Add this line after Flask app initialization
 ensure_csv_exists()
 
-# Add this new route after your other routes
 @app.route('/shutdown', methods=['POST'])
 def shutdown():
     global video_capture
     try:
-        # Release camera
         if video_capture is not None:
             video_capture.release()
             video_capture = None
             
-        # Save final session if active
         if session_start:
             stop_video()
             
-        # Shutdown the server
-        func = request.environ.get('werkzeug.server.shutdown')
-        if func is None:
-            raise RuntimeError('Not running with the Werkzeug Server')
-        func()
-        return jsonify({"status": "Server shutting down..."})
+        if 'werkzeug.server.shutdown' in request.environ:
+            request.environ['werkzeug.server.shutdown']()
+            return jsonify({"status": "Server shutting down..."})
+        
+        os._exit(0)
+        
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"Shutdown error: {e}")
+        os._exit(1)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, threaded=True)
