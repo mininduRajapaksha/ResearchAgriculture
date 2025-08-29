@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Banana Quality Control - Session History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            margin: 20px 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .back-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .back-btn:hover {
+            background-color: #45a049;
+        }
+        .no-data {
+            text-align: center;
+            padding: 20px;
+            background: white;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-btn">Back to Camera</a>
+        <h1>Session History</h1>
+        {% if sessions %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Session Start</th>
+                        <th>Session End</th>
+                        <th>Fresh</th>
+                        <th>Rotten</th>
+                        <th>Unripe</th>
+                        <th>Unknown</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for session in sessions %}
+                    <tr>
+                        <td>{{ session.session_start }}</td>
+                        <td>{{ session.session_end }}</td>
+                        <td>{{ session.fresh_count }}</td>
+                        <td>{{ session.rotten_count }}</td>
+                        <td>{{ session.unripe_count }}</td>
+                        <td>{{ session.unknown_count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="no-data">
+                <p>No sessions recorded yet.</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -1,163 +1,249 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Banana Quality Control</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f0f0f0;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            text-align: center;
-        }
-        .video-container {
-            margin: 20px auto;
-            width: 640px;
-            height: 480px;
-            border: 2px solid #333;
-            border-radius: 5px;
-            overflow: hidden;
-        }
-        #videoFeed {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .results {
-            margin: 20px auto;
-            padding: 15px;
-            background: white;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .quality-count {
-            display: inline-block;
-            margin: 0 15px;
-            font-size: 1.2em;
-        }
-        .status {
-            color: #666;
-            margin-top: 10px;
-        }
-        .controls {
-            margin: 20px 0;
-        }
-        .button {
-            padding: 10px 20px;
-            margin: 0 10px;
-            font-size: 1.1em;
-            cursor: pointer;
-            border: none;
-            border-radius: 5px;
-            background-color: #4CAF50;
-            color: white;
-            transition: background-color 0.3s;
-        }
-        .button:hover {
-            background-color: #45a049;
-        }
-        .button.stop {
-            background-color: #f44336;
-        }
-        .button.stop:hover {
-            background-color: #da190b;
-        }
-        .hidden {
-            display: none;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Banana Quality Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f5f7fb; --card:#ffffff; --text:#222; --muted:#6b7280;
+      --green:#16a34a; --red:#dc2626; --yellow:#f59e0b; --blue:#2563eb;
+      --border:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:24px; background:var(--bg); color:var(--text);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji", "Segoe UI Symbol";
+    }
+    .container{max-width:1100px; margin:0 auto}
+    h1{margin:0 0 12px 0; font-weight:700; letter-spacing:.2px}
+    .sub{color:var(--muted); margin-bottom:20px}
+    .controls{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+    .btn{
+      cursor:pointer; border:1px solid var(--border); background:var(--card);
+      padding:10px 16px; border-radius:10px; font-weight:600;
+      transition: all .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    }
+    .btn:hover{transform: translateY(-1px)}
+    .btn.primary{background:var(--blue); color:#fff; border-color:transparent}
+    .btn.stop{background:var(--red); color:#fff; border-color:transparent}
+    .btn.warn{background:var(--yellow); color:#111; border-color:transparent}
+    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:16px}
+    @media (max-width: 960px){ .grid{grid-template-columns: 1fr} }
+
+    .card{
+      background:var(--card); border:1px solid var(--border); border-radius:14px;
+      padding:16px; box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+    .video-wrap{display:flex; justify-content:center; align-items:center; min-height:520px; position:relative}
+    .video{
+      width:100%; max-width:960px; height:520px; object-fit:cover; border-radius:12px; border:1px solid var(--border);
+      background: #0b1220;
+    }
+    .placeholder{
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cbd5e1;
+      font-weight:600; letter-spacing:.3px; user-select:none; pointer-events:none;
+    }
+    .hidden{display:none !important}
+
+    .counts{display:grid; grid-template-columns: repeat(4,1fr); gap:12px}
+    @media (max-width: 720px){ .counts{grid-template-columns: repeat(2,1fr)} }
+    .count{
+      border:1px solid var(--border); border-radius:12px; padding:12px;
+      background:#fff; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .count h3{margin:0; font-size:14px; color:var(--muted); font-weight:600}
+    .badge{
+      min-width:62px; text-align:right; font-size:18px; font-weight:800; letter-spacing:.5px;
+    }
+    .fresh .badge{color:var(--green)}
+    .rotten .badge{color:var(--red)}
+    .unripe .badge{color:var(--yellow)}
+    .unknown .badge{color:#475569}
+
+    .row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px}
+    .muted{color:var(--muted)}
+    .pill{
+      padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:700; font-size:12px;
+      border:1px solid #e0e7ff;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Banana Quality Control System</h1>
-        <div class="controls">
-            <button id="startBtn" class="button">Start Video</button>
-            <button id="stopBtn" class="button stop hidden">Stop Video</button>
-            <button id="shutdownBtn" class="button stop">Shutdown Server</button>
-        </div>
-        <div class="video-container">
-            <img id="videoFeed" class="hidden" src="" alt="Video stream">
-        </div>
-        <div class="results">
-            <h2>Detection Results</h2>
-            <div class="quality-count">Fresh: <span id="freshCount">0</span></div>
-            <div class="quality-count">Rotten: <span id="rottenCount">0</span></div>
-            <div class="quality-count">Unripe: <span id="unripeCount">0</span></div>
-            <div class="status" id="status">Click Start Video to begin monitoring</div>
-        </div>
+  <div class="container">
+    <h1>Banana Quality Control System</h1>
+    <div class="sub">YOLO detection + CNN classification • Live stream + session logging</div>
+
+    <div class="controls">
+      <button id="startBtn" class="btn primary">▶ Start Video</button>
+      <button id="stopBtn" class="btn stop hidden">■ Stop Video & Save Session</button>
+      <button id="shutdownBtn" class="btn warn">⏻ Shutdown Server</button>
+      <span id="statusText" class="muted" style="margin-left:6px">Idle</span>
     </div>
 
-    <script>
-        const videoFeed = document.getElementById('videoFeed');
-        const startBtn = document.getElementById('startBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const status = document.getElementById('status');
-        let countUpdateInterval;
+    <div class="grid">
+      <div class="card">
+        <div class="video-wrap">
+          <img id="videoFeed" class="video hidden" src="" alt="Video stream" />
+          <div id="placeholder" class="placeholder">Stream stopped</div>
+        </div>
+      </div>
 
-        startBtn.addEventListener('click', () => {
-            // Start video feed
-            videoFeed.src = "{{ url_for('video_feed') }}";
-            videoFeed.classList.remove('hidden');
-            startBtn.classList.add('hidden');
-            stopBtn.classList.remove('hidden');
-            status.textContent = 'Monitoring...';
-            
-            // Start count updates
-            countUpdateInterval = setInterval(updateCounts, 500);
-        });
+      <div class="card">
+        <h3 style="margin:0 0 12px 0;">Live Counts (this session)</h3>
+        <div class="counts">
+          <div class="count fresh">
+            <h3>Fresh</h3>
+            <div class="badge" id="freshCount">0</div>
+          </div>
+          <div class="count rotten">
+            <h3>Rotten</h3>
+            <div class="badge" id="rottenCount">0</div>
+          </div>
+          <div class="count unripe">
+            <h3>Unripe</h3>
+            <div class="badge" id="unripeCount">0</div>
+          </div>
+          <div class="count unknown">
+            <h3>Unknown</h3>
+            <div class="badge" id="unknownCount">0</div>
+          </div>
+        </div>
 
-        stopBtn.addEventListener('click', () => {
-            // Stop video feed
-            videoFeed.src = "";
-            videoFeed.classList.add('hidden');
-            stopBtn.classList.add('hidden');
-            startBtn.classList.remove('hidden');
-            status.textContent = 'Monitoring stopped';
-            
-            // Stop count updates
-            clearInterval(countUpdateInterval);
-            
-            // Reset counts
-            document.getElementById('freshCount').textContent = '0';
-            document.getElementById('rottenCount').textContent = '0';
-            document.getElementById('unripeCount').textContent = '0';
-            
-            // Call stop endpoint
-            fetch('/stop_video');
-        });
+        <div class="row">
+          <div class="muted">
+            <div>Session started: <span id="sessionStart" class="pill">—</span></div>
+            <div style="margin-top:6px;">Elapsed: <span id="sessionElapsed" class="pill">00:00</span></div>
+          </div>
+          <a href="/banana_sessions.csv" class="btn" title="Open CSV log (appends on Stop)">
+            ⬇ View CSV Log
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        document.getElementById('shutdownBtn').addEventListener('click', async () => {
-            if (confirm('Are you sure you want to shutdown the server?')) {
-                try {
-                    await fetch('/shutdown', {method: 'POST'});
-                    alert('Server shutdown initiated. You can close this window.');
-                } catch (error) {
-                    console.error('Shutdown error:', error);
-                    alert('Error shutting down server');
-                }
-            }
-        });
+  <script>
+    const videoFeed      = document.getElementById('videoFeed');
+    const placeholder    = document.getElementById('placeholder');
+    const startBtn       = document.getElementById('startBtn');
+    const stopBtn        = document.getElementById('stopBtn');
+    const shutdownBtn    = document.getElementById('shutdownBtn');
+    const statusText     = document.getElementById('statusText');
 
-        async function updateCounts() {
-            try {
-                const response = await fetch('/detection_counts');
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                const data = await response.json();
-                
-                document.getElementById('freshCount').textContent = data.fresh;
-                document.getElementById('rottenCount').textContent = data.rotten;
-                document.getElementById('unripeCount').textContent = data.unripe;
-            } catch (error) {
-                console.error('Error fetching detection counts:', error);
-                status.textContent = 'Error updating counts';
-            }
+    const freshEl   = document.getElementById('freshCount');
+    const rottenEl  = document.getElementById('rottenCount');
+    const unripeEl  = document.getElementById('unripeCount');
+    const unknownEl = document.getElementById('unknownCount');
+
+    const sessionStartEl   = document.getElementById('sessionStart');
+    const sessionElapsedEl = document.getElementById('sessionElapsed');
+
+    let countsTimer = null;
+    let sessionTimer = null;
+
+    function fmtTwo(n){ return n.toString().padStart(2,'0'); }
+    function fmtDuration(sec){
+      sec = Math.max(0, Math.floor(sec));
+      const h = Math.floor(sec/3600);
+      const m = Math.floor((sec%3600)/60);
+      const s = sec%60;
+      return h>0 ? `${fmtTwo(h)}:${fmtTwo(m)}:${fmtTwo(s)}` : `${fmtTwo(m)}:${fmtTwo(s)}`;
+    }
+
+    async function updateCounts(){
+      try{
+        const r = await fetch('/detection_counts', {cache:'no-store'});
+        if(!r.ok) throw new Error('counts fetch failed');
+        const data = await r.json();
+        freshEl.textContent   = data.fresh ?? 0;
+        rottenEl.textContent  = data.rotten ?? 0;
+        unripeEl.textContent  = data.unripe ?? 0;
+        unknownEl.textContent = data.unknown ?? 0;
+      }catch(e){
+        console.error(e);
+        statusText.textContent = 'Error updating counts';
+      }
+    }
+
+    async function updateSession(){
+      try{
+        const r = await fetch('/session_info', {cache:'no-store'});
+        if(!r.ok) throw new Error('session fetch failed');
+        const data = await r.json();
+        if (data.status === 'no active session'){
+          sessionStartEl.textContent = '—';
+          sessionElapsedEl.textContent = '00:00';
+          return;
         }
-    </script>
+        sessionStartEl.textContent = new Date(data.start_time).toLocaleTimeString();
+        sessionElapsedEl.textContent = fmtDuration(data.duration_seconds);
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    async function startVideo(){
+      statusText.textContent = 'Starting…';
+      // show stream
+      videoFeed.src = "{{ url_for('video_feed') }}";
+      videoFeed.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      startBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+      statusText.textContent = 'Monitoring';
+
+      // kick off polling
+      countsTimer = setInterval(updateCounts, 500);
+      sessionTimer = setInterval(updateSession, 1000);
+    }
+
+    async function stopVideo(){
+      statusText.textContent = 'Stopping…';
+      // stop polling first
+      if (countsTimer){ clearInterval(countsTimer); countsTimer = null; }
+      if (sessionTimer){ clearInterval(sessionTimer); sessionTimer = null; }
+
+      // hide stream
+      videoFeed.src = '';
+      videoFeed.classList.add('hidden');
+      placeholder.classList.remove('hidden');
+
+      // persist + reset on server
+      try{ await fetch('/stop_video'); }catch(e){ console.error(e); }
+
+      // UI reset
+      stopBtn.classList.add('hidden');
+      startBtn.classList.remove('hidden');
+      statusText.textContent = 'Stopped (session saved to CSV)';
+    }
+
+    async function shutdownServer(){
+      if(!confirm('Shutdown Flask server now?')) return;
+      try{
+        // stop video if running
+        if (!stopBtn.classList.contains('hidden')) await fetch('/stop_video');
+        const r = await fetch('/shutdown', {method:'POST'});
+        if (r.ok){
+          alert('Server is shutting down. You can close this tab.');
+        }else{
+          alert('Shutdown failed. Use Ctrl+C in the terminal.');
+        }
+      }catch(e){
+        alert('Shutdown error. Use Ctrl+C in the terminal.');
+      }
+    }
+
+    startBtn.addEventListener('click', startVideo);
+    stopBtn.addEventListener('click', stopVideo);
+    shutdownBtn.addEventListener('click', shutdownServer);
+
+    // If user closes/refreshes while streaming, try to stop cleanly
+    window.addEventListener('beforeunload', () => {
+      if (!stopBtn.classList.contains('hidden')) {
+        navigator.sendBeacon('/stop_video');
+      }
+    });
+  </script>
 </body>
 </html>
