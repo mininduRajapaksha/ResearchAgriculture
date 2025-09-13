@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Banana Quality Control</title>
+  <title>Quality Control</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root{
@@ -66,6 +66,8 @@
       padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:700; font-size:12px;
       border:1px solid #e0e7ff;
     }
+
+    /* popup table styles */
     table { width:100%; border-collapse: collapse; }
     th, td { border:1px solid #ddd; padding:8px; text-align:left; }
     th { background:#f7f7f7; position:sticky; top:0; }
@@ -74,8 +76,8 @@
 </head>
 <body>
   <div class="container">
-    <h1>Banana Quality Control System</h1>
-    <div class="sub">YOLO detection + CNN classification • Live stream + session logging</div>
+    <h1 align="center">Quality Control System</h1>
+    <div class="sub"></div>
 
     <div class="controls">
       <button id="startBtn" class="btn primary">▶ Start Video</button>
@@ -168,62 +170,125 @@
       }
     }
 
-    async function openHistory(){
-      try{
-        const res = await fetch('/api/history', {cache:'no-store'});
-        if(!res.ok) throw new Error('history fetch failed');
-        const rows = await res.json();
+    // ---------- History popup with date filter (no nested template-literals) ----------
+    function openHistory(){
+      const win = window.open('', 'historyWindow', 'width=980,height=640');
+      if(!win){ alert('Please allow popups to view history.'); return; }
 
-        const win = window.open('', 'historyWindow', 'width=900,height=600');
-        if(!win){ alert('Please allow popups to view history.'); return; }
+      const skeleton = `
+        <!doctype html><html><head><meta charset="utf-8"><title>Session History</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding:16px; }
+          h2 { margin: 0 0 12px 0; }
+          .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+          .filters { display:flex; gap:10px; align-items:end; margin-bottom:12px; flex-wrap:wrap; }
+          label { display:flex; flex-direction:column; font-size:13px; color:#444; }
+          input[type="date"] { padding:6px 8px; border:1px solid #ddd; border-radius:6px; }
+          .btn { padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; }
+          .btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+          .btn.link { background:#f8fafc; }
+          table { width:100%; border-collapse: collapse; }
+          th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+          th { background:#f7f7f7; position:sticky; top:0; }
+          tr:nth-child(even){ background:#fafafa; }
+        </style></head><body>
 
-        let html = `
-          <html><head><meta charset="utf-8"/><title>Session History</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding:16px; }
-            h2 { margin: 0 0 12px 0; }
-            table { width:100%; border-collapse: collapse; }
-            th, td { border:1px solid #ddd; padding:8px; text-align:left; }
-            th { background:#f7f7f7; position:sticky; top:0; }
-            tr:nth-child(even){ background:#fafafa; }
-          </style></head><body>
+        <div class="toolbar">
           <h2>Saved Sessions</h2>
-          <table><thead>
+          <a class="btn link" href="/history.csv" target="_blank" title="Download CSV">⬇ Download CSV</a>
+        </div>
+
+        <div class="filters">
+          <label>From (date)
+            <input type="date" id="fStart" />
+          </label>
+          <label>To (date)
+            <input type="date" id="fEnd" />
+          </label>
+          <button class="btn primary" id="applyBtn">Apply</button>
+          <button class="btn" id="clearBtn">Clear</button>
+        </div>
+
+        <table>
+          <thead>
             <tr>
               <th>#</th><th>Start</th><th>End</th><th>Duration (s)</th>
               <th>Fresh</th><th>Rotten</th><th>Unripe</th><th>Unknown</th><th>Total</th>
-            </tr></thead><tbody>
-        `;
-
-        rows.forEach((r, i) => {
-          const f  = parseInt(r.fresh_count || 0, 10);
-          const ro = parseInt(r.rotten_count || 0, 10);
-          const u  = parseInt(r.unripe_count || 0, 10);
-          const un = parseInt(r.unknown_count || 0, 10);
-          const total = f + ro + u + un;
-
-          html += `
-            <tr>
-              <td>${i+1}</td>
-              <td>${r.session_start || ''}</td>
-              <td>${r.session_end || ''}</td>
-              <td>${r.duration_sec ?? ''}</td>
-              <td>${f}</td><td>${ro}</td><td>${u}</td><td>${un}</td><td>${total}</td>
             </tr>
-          `;
-        });
+          </thead>
+          <tbody id="rowsBody">
+            <tr><td colspan="9" style="text-align:center;color:#666;">Loading…</td></tr>
+          </tbody>
+        </table>
 
-        if(rows.length === 0){
-          html += `<tr><td colspan="9" style="text-align:center;color:#666;">No sessions recorded yet</td></tr>`;
-        }
+        </body></html>
+      `;
 
-        html += `</tbody></table></body></html>`;
-        win.document.open(); win.document.write(html); win.document.close();
-      }catch(e){
-        console.error(e);
-        alert('Could not load history.');
+      // Write skeleton and then manipulate DOM from the parent
+      const doc = win.document;
+      doc.open(); doc.write(skeleton); doc.close();
+
+      const fStart  = doc.getElementById('fStart');
+      const fEnd    = doc.getElementById('fEnd');
+      const applyBtn= doc.getElementById('applyBtn');
+      const clearBtn= doc.getElementById('clearBtn');
+      const rowsBody= doc.getElementById('rowsBody');
+
+      // Default range: last 7 days
+      (function setDefaults(){
+        const pad = n => String(n).padStart(2,'0');
+        const toDateStr = d => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+        const today = new Date();
+        const weekAgo = new Date(); weekAgo.setDate(today.getDate() - 7);
+        fEnd.value = toDateStr(today);
+        fStart.value = toDateStr(weekAgo);
+      })();
+
+      function buildQuery(){
+        const qs = [];
+        if (fStart.value) qs.push('start_date=' + encodeURIComponent(fStart.value + 'T00:00:00'));
+        if (fEnd.value)   qs.push('end_date='   + encodeURIComponent(fEnd.value   + 'T23:59:59'));
+        return qs.length ? ('?' + qs.join('&')) : '';
       }
+
+      async function loadRows(){
+        rowsBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;">Loading…</td></tr>';
+        try{
+          const res = await fetch('/api/history' + buildQuery(), {cache:'no-store'});
+          const data = await res.json();
+
+          if (!Array.isArray(data) || data.length === 0){
+            rowsBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;">No sessions found for the selected range</td></tr>';
+            return;
+          }
+
+          let html = '';
+          data.forEach((r, i) => {
+            const f  = parseInt(r.fresh_count  || 0, 10);
+            const ro = parseInt(r.rotten_count || 0, 10);
+            const u  = parseInt(r.unripe_count || 0, 10);
+            const un = parseInt(r.unknown_count|| 0, 10);
+            const total = f + ro + u + un;
+            html += '<tr>'
+                 + `<td>${i+1}</td>`
+                 + `<td>${r.session_start || ''}</td>`
+                 + `<td>${r.session_end || ''}</td>`
+                 + `<td>${(r.duration_sec ?? '')}</td>`
+                 + `<td>${f}</td><td>${ro}</td><td>${u}</td><td>${un}</td><td>${total}</td>`
+                 + '</tr>';
+          });
+          rowsBody.innerHTML = html;
+        }catch(e){
+          console.error(e);
+          rowsBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#b91c1c;">Error loading history</td></tr>';
+        }
+      }
+
+      applyBtn.addEventListener('click', loadRows);
+      clearBtn.addEventListener('click', () => { fStart.value=''; fEnd.value=''; loadRows(); });
+      loadRows();
     }
+    // ------------------------------------------------------------------------------
 
     async function startVideo(){
       statusText.textContent = 'Starting…';
