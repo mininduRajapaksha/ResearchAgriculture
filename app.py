@@ -1,226 +1,75 @@
 import os
 import csv
 import datetime
-from flask import Flask, Response, render_template, jsonify, request, send_file
-import pathlib
-import cv2
-import numpy as np
-from banana_detector import BananaDetector
-from tensorflow.keras.models import load_model
 import time
 from collections import deque
+
+from flask import Flask, Response, render_template, jsonify, request, send_file
+import cv2
+import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
+from tensorflow.keras.models import load_model
 
-# Define PerformanceMonitor class first
-class PerformanceMonitor:
-    def __init__(self, buffer_size=100):
-        self.frame_times = deque(maxlen=buffer_size)
-        self.inference_times = deque(maxlen=buffer_size)
-        self.true_labels = []
-        self.pred_labels = []
-        
-    def add_frame_time(self, time_ms):
-        self.frame_times.append(time_ms)
-        
-    def add_inference_time(self, time_ms):
-        self.inference_times.append(time_ms)
-        
-    def add_prediction(self, true_label, pred_label):
-        # Simulate ground truth for demo (replace with actual ground truth in production)
-        self.true_labels.append(true_label)
-        self.pred_labels.append(pred_label)
-        
-    def get_fps(self):
-        return 1000 / (sum(self.frame_times) / len(self.frame_times)) if self.frame_times else 0
-        
-    def get_latency(self):
-        return sum(self.inference_times) / len(self.inference_times) if self.inference_times else 0
+from banana_detector import BananaDetector  # YOLO wrapper you already have
 
-# Initialize Flask and other components
+# -----------------------
+# Config / Globals
+# -----------------------
+CSV_PATH = 'banana_sessions.csv'
+CLASS_NAMES = ['fresh', 'rotten', 'unripe']
+
 app = Flask(__name__)
 video_capture = None
 
-# Initialize models
+# Models
 detector = BananaDetector(conf_threshold=0.4)
 classifier = load_model('banana_quality_model.h5')
-CLASS_NAMES = ['fresh','rotten','unripe']
 
 # Session tracking
-session_counts = {'fresh':0,'rotten':0,'unripe':0,'unknown':0}
+session_counts = {'fresh': 0, 'rotten': 0, 'unripe': 0, 'unknown': 0}
 session_start = None
 next_banana_id = 0
-tracked_bananas = {}   # id -> centroid
+tracked_bananas = {}  # id -> (centroid, label)
 
-# Initialize performance monitor
+# -----------------------
+# Performance monitor
+# -----------------------
+class PerformanceMonitor:
+    def __init__(self, buffer_size=100):
+        self.frame_times = deque(maxlen=buffer_size)       # ms per frame
+        self.pipeline_times = deque(maxlen=buffer_size)    # ms for detect+classify per frame
+        self.true_labels = []   # demo: same as predicted
+        self.pred_labels = []
+
+    def add_frame_time(self, ms):
+        self.frame_times.append(ms)
+
+    def add_pipeline_time(self, ms):
+        self.pipeline_times.append(ms)
+
+    def add_prediction(self, true_label, pred_label):
+        self.true_labels.append(true_label)
+        self.pred_labels.append(pred_label)
+
+    def get_fps(self):
+        if not self.frame_times: return 0.0
+        avg_ms = sum(self.frame_times) / len(self.frame_times)
+        return 1000.0 / avg_ms if avg_ms > 0 else 0.0
+
+    def get_latency(self):
+        if not self.pipeline_times: return 0.0
+        return sum(self.pipeline_times) / len(self.pipeline_times)
+
 performance_monitor = PerformanceMonitor(buffer_size=100)
 
-def preprocess_roi(roi):
-    roi = cv2.resize(roi,(224,224))
-    return np.expand_dims(roi.astype('float32')/255.0,0)
-
-def get_centroid(x,y,w,h):
-    return (int(x+w/2), int(y+h/2))
-
-def gen_frames():
-    global video_capture, session_counts, session_start, next_banana_id, tracked_bananas, performance_monitor
-
-    if session_start is None:
-        session_start = datetime.datetime.now()
-        session_counts = dict.fromkeys(session_counts, 0)
-        tracked_bananas = {}
-
-    video_capture = cv2.VideoCapture(0)
-    if not video_capture.isOpened():
-        raise RuntimeError("Cannot open camera")
-
-    performance_monitor = PerformanceMonitor(buffer_size=100)
-
-    while True:
-        frame_start = time.time()
-        ret, frame = video_capture.read()
-        if not ret:
-            break
-
-        # Initialize current_centroids for this frame
-        current_centroids = []  # Add this line
-
-        # detect bananas
-        inference_start = time.time()
-        boxes = detector.detect(frame)
-        
-        for (x,y,w,h) in boxes:
-            try:
-                roi = frame[y:y+h, x:x+w]
-                if roi.size == 0:  # Check if ROI is valid
-                    continue
-                    
-                pred = classifier.predict(preprocess_roi(roi), verbose=0)[0]
-                idx = int(np.argmax(pred))
-                conf = float(pred[idx])
-                label = CLASS_NAMES[idx] if conf>=0.6 else 'unknown'
-                
-                # Make sure we only collect valid predictions
-                if label in CLASS_NAMES:  # Only collect when we have a valid class
-                    # For demo, use the predicted label as ground truth
-                    # In production, replace with actual ground truth
-                    performance_monitor.add_prediction(label, label)
-                    print(f"Added prediction: {label}")  # Debug print
-                
-                # Track inference time
-                inference_time = (time.time() - inference_start) * 1000
-                performance_monitor.add_inference_time(inference_time)
-                
-                # Add prediction to performance monitor
-                performance_monitor.add_prediction(label, label)  # Using predicted as truth for demo
-                
-                # track centroids to avoid double-count
-                centroid = get_centroid(x,y,w,h)
-                current_centroids.append((centroid,label))
-
-                # check if this banana is new
-                already_tracked = False
-                for b_id, (c_prev, _) in tracked_bananas.items():
-                    if abs(c_prev[0]-centroid[0]) < 50 and abs(c_prev[1]-centroid[1]) < 50:
-                        tracked_bananas[b_id] = (centroid,label)
-                        already_tracked = True
-                        break
-
-                if not already_tracked:
-                    tracked_bananas[next_banana_id] = (centroid,label)
-                    session_counts[label] += 1
-                    next_banana_id += 1
-
-                # draw
-                color = (0,255,0) if label=='fresh' else (0,0,255) if label=='rotten' else (255,255,0)
-                cv2.rectangle(frame,(x,y),(x+w,y+h),color,2)
-                cv2.putText(frame,f"{label}:{conf:.2f}",(x,y-10),cv2.FONT_HERSHEY_SIMPLEX,0.5,color,2)
-                
-            except Exception as e:
-                print(f"Error processing ROI: {e}")
-                continue
-
-        # Track total frame time
-        frame_time = (time.time() - frame_start) * 1000
-        performance_monitor.add_frame_time(frame_time)
-        
-        # stream out
-        try:
-            ret, buf = cv2.imencode('.jpg', frame)
-            if not ret: 
-                continue
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
-        except Exception as e:
-            print(f"Error encoding frame: {e}")
-            continue
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/video_feed')
-def video_feed():
-    return Response(gen_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
-@app.route('/detection_counts')
-def detection_counts():
-    return jsonify(session_counts)
-
-@app.route('/stop_video')
-def stop_video():
-    global video_capture, session_start, session_counts, tracked_bananas
-    try:
-        if video_capture is not None:
-            video_capture.release()
-            video_capture = None
-
-        session_end = datetime.datetime.now()
-
-        if session_start:
-            # Save session data
-            with open('banana_sessions.csv','a',newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow([
-                    session_start.isoformat(),
-                    session_end.isoformat(),
-                    session_counts['fresh'],
-                    session_counts['rotten'],
-                    session_counts['unripe'],
-                    session_counts['unknown']
-                ])
-            
-            # Generate and save figures using the correct function name
-            save_performance_figures()
-            
-            session_start = None
-            session_counts = dict.fromkeys(session_counts, 0)
-            tracked_bananas = {}
-            return jsonify({"status":"stopped", "saved":True})
-        
-        return jsonify({"status":"stopped", "saved":False})
-        
-    except Exception as e:
-        print(f"Error stopping video: {e}")
-        return jsonify({"status":"error", "message":str(e)}), 500
-
-@app.route('/session_info')
-def session_info():
-    if session_start:
-        duration = (datetime.datetime.now() - session_start).total_seconds()
-        return jsonify({
-            "start_time": session_start.isoformat(),
-            "duration_seconds": duration,
-            "counts": session_counts
-        })
-    return jsonify({"status": "no active session"})
-
+# -----------------------
+# Utils
+# -----------------------
 def ensure_csv_exists():
-    csv_file = 'banana_sessions.csv'
-    if not os.path.exists(csv_file):
-        with open(csv_file, 'w', newline='') as f:
+    if not os.path.exists(CSV_PATH):
+        with open(CSV_PATH, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([
                 'session_start',
@@ -231,202 +80,278 @@ def ensure_csv_exists():
                 'unknown_count'
             ])
 
-ensure_csv_exists()
+def preprocess_roi(roi):
+    roi = cv2.resize(roi, (224, 224))
+    roi = roi.astype('float32') / 255.0
+    return np.expand_dims(roi, axis=0)
 
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    global video_capture
+def get_centroid(x, y, w, h):
+    return (int(x + w / 2), int(y + h / 2))
+
+def _read_history_rows():
+    rows = []
+    if os.path.exists(CSV_PATH):
+        with open(CSV_PATH, newline='') as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                try:
+                    t0 = datetime.datetime.fromisoformat(r['session_start'])
+                    t1 = datetime.datetime.fromisoformat(r['session_end'])
+                    r['duration_sec'] = round((t1 - t0).total_seconds(), 2)
+                except Exception:
+                    r['duration_sec'] = None
+                rows.append(r)
+    return rows
+
+# -----------------------
+# Streaming generator
+# -----------------------
+def gen_frames():
+    global video_capture, session_counts, session_start, next_banana_id, tracked_bananas, performance_monitor
+
+    if session_start is None:
+        session_start = datetime.datetime.now()
+        session_counts = {k: 0 for k in session_counts}
+        tracked_bananas = {}
+
+    video_capture = cv2.VideoCapture(0)
+    if not video_capture.isOpened():
+        raise RuntimeError("Cannot open camera")
+
+    # reset perf buffer for a new session
+    performance_monitor = PerformanceMonitor(buffer_size=100)
+
+    while True:
+        frame_start = time.time()
+        ret, frame = video_capture.read()
+        if not ret:
+            break
+
+        # Measure pipeline (detect+classify) once per frame
+        pipe_start = time.time()
+        boxes = detector.detect(frame)
+
+        for (x, y, w, h) in boxes:
+            try:
+                roi = frame[y:y+h, x:x+w]
+                if roi.size == 0:
+                    continue
+
+                preds = classifier.predict(preprocess_roi(roi), verbose=0)[0]
+                idx = int(np.argmax(preds))
+                conf = float(preds[idx])
+                label = CLASS_NAMES[idx] if conf >= 0.6 else 'unknown'
+
+                # For demo, treat predicted as truth
+                if label in CLASS_NAMES:
+                    performance_monitor.add_prediction(label, label)
+
+                # Count unique bananas (simple centroid tracker)
+                centroid = get_centroid(x, y, w, h)
+                already_tracked = False
+                for b_id, (c_prev, _) in list(tracked_bananas.items()):
+                    if abs(c_prev[0] - centroid[0]) < 50 and abs(c_prev[1] - centroid[1]) < 50:
+                        tracked_bananas[b_id] = (centroid, label)
+                        already_tracked = True
+                        break
+                if not already_tracked:
+                    tracked_bananas[next_banana_id] = (centroid, label)
+                    session_counts[label] += 1
+                    next_banana_id += 1
+
+                # Draw box
+                color = (0, 255, 0) if label == 'fresh' else (0, 0, 255) if label == 'rotten' else (255, 255, 0)
+                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+                cv2.putText(frame, f"{label}:{conf:.2f}", (x, y - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            except Exception as e:
+                print(f"ROI error: {e}")
+
+        # pipeline time for the frame
+        performance_monitor.add_pipeline_time((time.time() - pipe_start) * 1000.0)
+        # frame time (capture + pipeline + encode)
+        frame_ms = (time.time() - frame_start) * 1000.0
+        performance_monitor.add_frame_time(frame_ms)
+
+        # Stream
+        try:
+            ok, buf = cv2.imencode('.jpg', frame)
+            if not ok:
+                continue
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+        except Exception as e:
+            print(f"Encode error: {e}")
+
+# -----------------------
+# Routes
+# -----------------------
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.get('/detection_counts')
+def detection_counts():
+    return jsonify(session_counts)
+
+@app.get('/session_info')
+def session_info():
+    if session_start:
+        duration = (datetime.datetime.now() - session_start).total_seconds()
+        return jsonify({
+            "start_time": session_start.isoformat(),
+            "duration_seconds": duration,
+            "counts": session_counts
+        })
+    return jsonify({"status": "no active session"})
+
+@app.get('/api/history')
+def api_history():
+    try:
+        # Get date filter parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        rows = []
+        if os.path.exists('banana_sessions.csv'):
+            with open('banana_sessions.csv', 'r') as f:
+                reader = csv.reader(f)
+                next(reader, None)  # Skip header row
+                for row in reader:
+                    if len(row) == 6:  # Make sure row has all fields
+                        start_time = datetime.datetime.fromisoformat(row[0])
+                        end_time = datetime.datetime.fromisoformat(row[1])
+                        
+                        # Apply date filters if provided
+                        if start_date and start_time < datetime.datetime.fromisoformat(start_date):
+                            continue
+                        if end_date and end_time > datetime.datetime.fromisoformat(end_date):
+                            continue
+                        
+                        duration = (end_time - start_time).total_seconds()
+                        session = {
+                            'session_start': start_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            'session_end': end_time.strftime('%Y-%m-%d %H:%M:%S'),
+                            'duration_sec': round(duration),
+                            'fresh_count': row[2],
+                            'rotten_count': row[3],
+                            'unripe_count': row[4],
+                            'unknown_count': row[5]
+                        }
+                        rows.append(session)
+                        
+        return jsonify(rows)
+    except Exception as e:
+        print(f"Error reading history: {e}")
+        return jsonify([])
+
+@app.get('/history.csv')  # optional direct CSV download
+def history_csv():
+    if not os.path.exists(CSV_PATH):
+        ensure_csv_exists()
+    return send_file(CSV_PATH, as_attachment=False, download_name='banana_sessions.csv')
+
+@app.get('/generate_performance_plot')
+def generate_performance_plot():
+    if not performance_monitor.frame_times:
+        return jsonify({"error": "No performance data"}), 404
+
+    plt.figure(figsize=(12, 8))
+
+    # FPS
+    fps_values = [1000.0 / t for t in performance_monitor.frame_times if t > 0]
+    avg_fps = sum(fps_values) / len(fps_values) if fps_values else 0.0
+
+    plt.subplot(2, 1, 1)
+    plt.plot(fps_values, 'b-', alpha=0.6, label='Instantaneous FPS')
+    plt.axhline(y=avg_fps, color='r', linestyle='--', label=f'Average FPS: {avg_fps:.1f}')
+    plt.title('Frame Rate Performance')
+    plt.ylabel('FPS')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+
+    # Latency (pipeline time)
+    avg_lat = performance_monitor.get_latency()
+    plt.subplot(2, 1, 2)
+    plt.plot(performance_monitor.pipeline_times, 'g-', alpha=0.6, label='Per-frame Pipeline Time (ms)')
+    plt.axhline(y=avg_lat, color='r', linestyle='--', label=f'Average Latency: {avg_lat:.1f} ms')
+    plt.title('Processing Latency')
+    plt.xlabel('Frame #')
+    plt.ylabel('ms')
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+
+    plt.tight_layout()
+    os.makedirs('static', exist_ok=True)
+    out_path = 'static/performance.png'
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    return send_file(out_path, mimetype='image/png')
+
+@app.get('/generate_confusion_matrix')
+def generate_confusion_matrix():
+    if not performance_monitor.true_labels:
+        return jsonify({"error": "No classification data"}), 404
+
+    cm = confusion_matrix(
+        performance_monitor.true_labels,
+        performance_monitor.pred_labels,
+        labels=CLASS_NAMES
+    )
+    os.makedirs('static', exist_ok=True)
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='YlOrRd',
+                xticklabels=CLASS_NAMES, yticklabels=CLASS_NAMES)
+    plt.title('Banana Quality Classification Results')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    out_path = 'static/confusion_matrix.png'
+    plt.savefig(out_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    return send_file(out_path, mimetype='image/png')
+
+@app.get('/stop_video')
+def stop_video():
+    global video_capture, session_start, session_counts, tracked_bananas
     try:
         if video_capture is not None:
             video_capture.release()
             video_capture = None
-            
+
+        session_end = datetime.datetime.now()
         if session_start:
-            stop_video()
-            
-        if 'werkzeug.server.shutdown' in request.environ:
-            request.environ['werkzeug.server.shutdown']()
-            return jsonify({"status": "Server shutting down..."})
-        
-        os._exit(0)
-        
+            ensure_csv_exists()
+            with open(CSV_PATH, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    session_start.isoformat(),
+                    session_end.isoformat(),
+                    session_counts['fresh'],
+                    session_counts['rotten'],
+                    session_counts['unripe'],
+                    session_counts['unknown']
+                ])
+
+            # reset
+            session_start = None
+            session_counts = {k: 0 for k in session_counts}
+            tracked_bananas = {}
+            return jsonify({"status": "stopped", "saved": True})
+
+        return jsonify({"status": "stopped", "saved": False})
     except Exception as e:
-        print(f"Shutdown error: {e}")
-        os._exit(1)
+        print(f"Stop error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/generate_performance_plot')
-def generate_performance_plot():
-    if not performance_monitor or not performance_monitor.frame_times:
-        return jsonify({"error": "No performance data available"}), 404
-
-    plt.style.use('seaborn')
-    plt.figure(figsize=(12, 8))
-    
-    # Plot FPS over time
-    fps_values = [1000/t for t in performance_monitor.frame_times]
-    avg_fps = sum(fps_values)/len(fps_values)
-    
-    plt.subplot(2, 1, 1)
-    plt.plot(fps_values, 'b-', label='Instantaneous FPS', alpha=0.6)
-    plt.axhline(y=avg_fps, color='r', linestyle='--', 
-                label=f'Average FPS: {avg_fps:.1f}')
-    plt.title('Frame Rate Performance', pad=15)
-    plt.ylabel('Frames per Second')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    
-    # Plot latency over time
-    avg_latency = performance_monitor.get_latency()
-    plt.subplot(2, 1, 2)
-    plt.plot(performance_monitor.inference_times, 'g-', 
-             label='Processing Time', alpha=0.6)
-    plt.axhline(y=avg_latency, color='r', linestyle='--',
-                label=f'Average Latency: {avg_latency:.1f}ms')
-    plt.title('Processing Latency', pad=15)
-    plt.xlabel('Frame Number')
-    plt.ylabel('Milliseconds')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    
-    plt.tight_layout()
-    os.makedirs('static', exist_ok=True)
-    plt.savefig('static/performance.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    return send_file('static/performance.png', mimetype='image/png')
-
-@app.route('/generate_confusion_matrix')
-def generate_confusion_matrix():
-    if not performance_monitor or not performance_monitor.true_labels:
-        return jsonify({"error": "No classification data available"}), 404
-        
-    plt.style.use('seaborn')
-    plt.figure(figsize=(10, 8))
-    
-    cm = confusion_matrix(
-        performance_monitor.true_labels, 
-        performance_monitor.pred_labels,
-        labels=CLASS_NAMES
-    )
-    
-    accuracy = np.trace(cm) / np.sum(cm)
-    cm_normalized = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-    
-    sns.heatmap(
-        cm_normalized, 
-        annot=cm,
-        fmt='d',
-        cmap='YlOrRd',
-        xticklabels=CLASS_NAMES,
-        yticklabels=CLASS_NAMES,
-        square=True,
-        cbar_kws={'label': 'Normalized Predictions'}
-    )
-    
-    plt.title(f'Banana Quality Classification Results\nAccuracy: {accuracy:.2%}')
-    plt.ylabel('True Label')
-    plt.xlabel('Predicted Label')
-    
-    os.makedirs('static', exist_ok=True)
-    plt.savefig('static/confusion_matrix.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    return send_file('static/confusion_matrix.png', mimetype='image/png')
-
-def save_performance_figures():
-    if not performance_monitor or not performance_monitor.frame_times:
-        print("No performance data available")
-        return False
-
-    print(f"Number of predictions collected: {len(performance_monitor.true_labels)}")
-    print(f"Labels collected: {set(performance_monitor.true_labels)}")
-    
-    # Create static directory if it doesn't exist
-    os.makedirs('static', exist_ok=True)
-    
-    # Generate performance plot
-    plt.style.use('seaborn')
-    plt.figure(figsize=(12, 8))
-    
-    # Plot FPS over time
-    fps_values = [1000/t for t in performance_monitor.frame_times]
-    avg_fps = sum(fps_values)/len(fps_values) if fps_values else 0
-    
-    plt.subplot(2, 1, 1)
-    plt.plot(fps_values, 'b-', label='Instantaneous FPS', alpha=0.6)
-    plt.axhline(y=avg_fps, color='r', linestyle='--', 
-                label=f'Average FPS: {avg_fps:.1f}')
-    plt.title('Frame Rate Performance', pad=15)
-    plt.ylabel('Frames per Second')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    
-    # Plot latency over time
-    avg_latency = performance_monitor.get_latency()
-    plt.subplot(2, 1, 2)
-    plt.plot(performance_monitor.inference_times, 'g-', 
-             label='Processing Time', alpha=0.6)
-    plt.axhline(y=avg_latency, color='r', linestyle='--',
-                label=f'Average Latency: {avg_latency:.1f}ms')
-    plt.title('Processing Latency', pad=15)
-    plt.xlabel('Frame Number')
-    plt.ylabel('Milliseconds')
-    plt.grid(True, alpha=0.3)
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig('static/performance.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    # Generate confusion matrix if we have predictions
-    if performance_monitor.true_labels and performance_monitor.pred_labels:
-        print("Generating confusion matrix...")
-        try:
-            plt.figure(figsize=(10, 8))
-            cm = confusion_matrix(
-                performance_monitor.true_labels, 
-                performance_monitor.pred_labels,
-                labels=CLASS_NAMES
-            )
-            
-            # Print confusion matrix for debugging
-            print("\nConfusion Matrix:")
-            print(cm)
-            
-            sns.heatmap(
-                cm, 
-                annot=True,
-                fmt='d',
-                xticklabels=CLASS_NAMES,
-                yticklabels=CLASS_NAMES,
-                cmap='YlOrRd'
-            )
-            
-            plt.title('Banana Quality Classification Results')
-            plt.ylabel('True Label')
-            plt.xlabel('Predicted Label')
-            plt.tight_layout()
-            plt.savefig('static/confusion_matrix.png', dpi=300, bbox_inches='tight')
-            plt.close()
-            print("Confusion matrix saved successfully")
-        except Exception as e:
-            print(f"Error generating confusion matrix: {e}")
-    else:
-        print("No prediction data available for confusion matrix")
-        print(f"True labels: {len(performance_monitor.true_labels)}")
-        print(f"Predicted labels: {len(performance_monitor.pred_labels)}")
-    
-    return True
-
+# -----------------------
+# Main
+# -----------------------
 if __name__ == '__main__':
-    try:
-        # Ensure the static directory exists
-        os.makedirs('static', exist_ok=True)
-        
-        # Initialize CSV file
-        ensure_csv_exists()
-        
-        # Run the Flask app
-        app.run(host='0.0.0.0', port=5000, debug=True)
-    except Exception as e:
-        print(f"Error starting server: {e}")
+    os.makedirs('static', exist_ok=True)
+    ensure_csv_exists()
+    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
