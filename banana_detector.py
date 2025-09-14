@@ -12,11 +12,7 @@ class BananaDetector:
         model_path: str = 'yolov8n.pt',
         conf_threshold: float = 0.3
     ):
-        """
-        Initialize the YOLO banana detector.
-        model_path: path to a YOLOv8 weights file (e.g. 'yolov8n.pt').
-        conf_threshold: minimum confidence for detections.
-        """
+
         try:
             from ultralytics import YOLO
         except ImportError:
@@ -53,7 +49,7 @@ class BananaDetector:
             return []
 
 if __name__ == "__main__":
-    detector = BananaDetector(conf_threshold=0.4)
+    detector = BananaDetector(conf_threshold=0.3)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Cannot open camera")
