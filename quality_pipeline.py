@@ -47,7 +47,7 @@ class QualityPipeline:
     def __init__(self):
         print("Initializing QualityPipeline...")
         # load our YOLO-based Banana detector
-        self.detector = BananaDetector(conf_threshold=0.4)
+        self.detector = BananaDetector(conf_threshold=0.3)
         print("Detector initialized successfully")
         # load the quality-classifier
         model_path = 'banana_quality_model.h5'
