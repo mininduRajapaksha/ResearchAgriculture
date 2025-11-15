@@ -27,10 +27,10 @@ class BananaDetector:
         print("YOLO loaded and moved to CPU!")
 
     def detect(self, frame: np.ndarray) -> List[Tuple[int, int, int, int]]:
-        """
-        Run banana detection on a single BGR image.
-        Returns a list of bounding boxes (x, y, w, h).
-        """
+        
+        # Run banana detection on a single BGR image.
+        # Returns a list of bounding boxes (x, y, w, h).
+        
         try:
             results = self.model(frame, verbose=False)[0]
             boxes: List[Tuple[int,int,int,int]] = []
@@ -50,7 +50,7 @@ class BananaDetector:
 
 if __name__ == "__main__":
     detector = BananaDetector(conf_threshold=0.3)
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     if not cap.isOpened():
         print("Cannot open camera")
         exit(1)

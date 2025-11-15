@@ -55,7 +55,7 @@ app = Flask(__name__)
 video_capture = None
 
 # Load models once (avoid Flask reloader duplicate by running with use_reloader=False)
-detector = BananaDetector(conf_threshold=0.4)
+detector = BananaDetector(conf_threshold=0.3)
 classifier = load_model("banana_quality_model.h5")
 
 session_counts = {"fresh": 0, "rotten": 0, "unripe": 0, "unknown": 0}
@@ -117,10 +117,10 @@ def get_centroid(x, y, w, h):
     return (int(x + w / 2), int(y + h / 2))
 
 def parse_date_param(value, end_of_day=False):
-    """
-    Accepts 'YYYY-MM-DD' or full ISO. Returns naive datetime.
-    If end_of_day=True and only date given, returns date + 23:59:59.999999
-    """
+   
+    # Accepts 'YYYY-MM-DD' or full ISO. Returns naive datetime.
+    # If end_of_day=True and only date given, returns date + 23:59:59.999999
+    
     if not value:
         return None
     try:
