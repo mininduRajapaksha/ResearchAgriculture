@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Quality Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f5f7fb; --card:#ffffff; --text:#222; --muted:#6b7280;
+      --green:#16a34a; --red:#dc2626; --yellow:#f59e0b; --blue:#2563eb;
+      --border:#e5e7eb;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:24px; background:var(--bg); color:var(--text);
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans";
+    }
+    .container{max-width:1100px; margin:0 auto}
+    h1{margin:0 0 12px 0; font-weight:700; letter-spacing:.2px}
+    .sub{color:var(--muted); margin-bottom:20px}
+    .controls{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+    .btn{
+      cursor:pointer; border:1px solid var(--border); background:var(--card);
+      padding:10px 16px; border-radius:10px; font-weight:600;
+      transition: all .15s ease; box-shadow: 0 1px 2px rgba(0,0,0,.06);
+    }
+    .btn:hover{transform: translateY(-1px)}
+    .btn.primary{background:var(--blue); color:#fff; border-color:transparent}
+    .btn.stop{background:var(--red); color:#fff; border-color:transparent}
+    .grid{display:grid; grid-template-columns: 1fr 1fr; gap:16px}
+    @media (max-width: 960px){ .grid{grid-template-columns: 1fr} }
+
+    .card{
+      background:var(--card); border:1px solid var(--border); border-radius:14px;
+      padding:16px; box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+    .video-wrap{display:flex; justify-content:center; align-items:center; min-height:520px; position:relative}
+    .video{
+      width:100%; max-width:960px; height:520px; object-fit:cover; border-radius:12px; border:1px solid var(--border);
+      background:#0b1220;
+    }
+    .placeholder{
+      position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cbd5e1;
+      font-weight:600; letter-spacing:.3px; user-select:none; pointer-events:none;
+    }
+    .hidden{display:none !important}
+
+    .counts{display:grid; grid-template-columns: repeat(4,1fr); gap:12px}
+    @media (max-width: 720px){ .counts{grid-template-columns: repeat(2,1fr)} }
+    .count{
+      border:1px solid var(--border); border-radius:12px; padding:12px;
+      background:#fff; display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .count h3{margin:0; font-size:14px; color:var(--muted); font-weight:600}
+    .badge{
+      min-width:62px; text-align:right; font-size:18px; font-weight:800; letter-spacing:.5px;
+    }
+    .fresh .badge{color:var(--green)}
+    .rotten .badge{color:var(--red)}
+    .unripe .badge{color:var(--yellow)}
+    .unknown .badge{color:#475569}
+
+    .row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:10px}
+    .muted{color:var(--muted)}
+    .pill{
+      padding:6px 10px; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:700; font-size:12px;
+      border:1px solid #e0e7ff;
+    }
+
+    /* popup table styles */
+    table { width:100%; border-collapse: collapse; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+    th { background:#f7f7f7; position:sticky; top:0; }
+    tr:nth-child(even){ background:#fafafa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 align="center">Quality Control System</h1>
+    <div class="sub"></div>
+
+    <div class="controls">
+      <button id="startBtn" class="btn primary">▶ Start Video</button>
+      <button id="stopBtn" class="btn stop hidden">■ Stop Video & Save Session</button>
+      <span id="statusText" class="muted" style="margin-left:6px">Idle</span>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="video-wrap">
+          <img id="videoFeed" class="video hidden" src="" alt="Video stream" />
+          <div id="placeholder" class="placeholder">Stream stopped</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 12px 0;">Live Counts (this session)</h3>
+        <div class="counts">
+          <div class="count fresh"><h3>Fresh</h3><div class="badge" id="freshCount">0</div></div>
+          <div class="count rotten"><h3>Rotten</h3><div class="badge" id="rottenCount">0</div></div>
+          <div class="count unripe"><h3>Unripe</h3><div class="badge" id="unripeCount">0</div></div>
+          <div class="count unknown"><h3>Unknown</h3><div class="badge" id="unknownCount">0</div></div>
+        </div>
+
+        <div class="row">
+          <div class="muted">
+            <div>Session started: <span id="sessionStart" class="pill">—</span></div>
+            <div style="margin-top:6px;">Elapsed: <span id="sessionElapsed" class="pill">00:00</span></div>
+          </div>
+          <button id="historyBtn" class="btn" title="View saved sessions">📜 History</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const videoFeed      = document.getElementById('videoFeed');
+    const placeholder    = document.getElementById('placeholder');
+    const startBtn       = document.getElementById('startBtn');
+    const stopBtn        = document.getElementById('stopBtn');
+    const statusText     = document.getElementById('statusText');
+
+    const freshEl   = document.getElementById('freshCount');
+    const rottenEl  = document.getElementById('rottenCount');
+    const unripeEl  = document.getElementById('unripeCount');
+    const unknownEl = document.getElementById('unknownCount');
+
+    const sessionStartEl   = document.getElementById('sessionStart');
+    const sessionElapsedEl = document.getElementById('sessionElapsed');
+
+    let countsTimer = null;
+    let sessionTimer = null;
+
+    function fmtTwo(n){ return n.toString().padStart(2,'0'); }
+    function fmtDuration(sec){
+      sec = Math.max(0, Math.floor(sec));
+      const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+      return h>0 ? `${fmtTwo(h)}:${fmtTwo(m)}:${fmtTwo(s)}` : `${fmtTwo(m)}:${fmtTwo(s)}`;
+    }
+
+    async function updateCounts(){
+      try{
+        const r = await fetch('/detection_counts', {cache:'no-store'});
+        if(!r.ok) throw new Error('counts fetch failed');
+        const data = await r.json();
+        freshEl.textContent   = data.fresh ?? 0;
+        rottenEl.textContent  = data.rotten ?? 0;
+        unripeEl.textContent  = data.unripe ?? 0;
+        unknownEl.textContent = data.unknown ?? 0;
+      }catch(e){
+        console.error(e);
+        statusText.textContent = 'Error updating counts';
+      }
+    }
+
+    async function updateSession(){
+      try{
+        const r = await fetch('/session_info', {cache:'no-store'});
+        if(!r.ok) throw new Error('session fetch failed');
+        const data = await r.json();
+        if (data.status === 'no active session'){
+          sessionStartEl.textContent = '—';
+          sessionElapsedEl.textContent = '00:00';
+          return;
+        }
+        sessionStartEl.textContent = new Date(data.start_time).toLocaleTimeString();
+        sessionElapsedEl.textContent = fmtDuration(data.duration_seconds);
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    // ---------- History popup with date filter (no nested template-literals) ----------
+    function openHistory(){
+      const win = window.open('', 'historyWindow', 'width=980,height=640');
+      if(!win){ alert('Please allow popups to view history.'); return; }
+
+      const skeleton = `
+        <!doctype html><html><head><meta charset="utf-8"><title>Session History</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding:16px; }
+          h2 { margin: 0 0 12px 0; }
+          .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+          .filters { display:flex; gap:10px; align-items:end; margin-bottom:12px; flex-wrap:wrap; }
+          label { display:flex; flex-direction:column; font-size:13px; color:#444; }
+          input[type="date"] { padding:6px 8px; border:1px solid #ddd; border-radius:6px; }
+          .btn { padding:8px 12px; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; }
+          .btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
+          .btn.link { background:#f8fafc; }
+          table { width:100%; border-collapse: collapse; }
+          th, td { border:1px solid #ddd; padding:8px; text-align:left; }
+          th { background:#f7f7f7; position:sticky; top:0; }
+          tr:nth-child(even){ background:#fafafa; }
+        </style></head><body>
+
+        <div class="toolbar">
+          <h2>Saved Sessions</h2>
+          <a class="btn link" href="/history.csv" target="_blank" title="Download CSV">⬇ Download CSV</a>
+        </div>
+
+        <div class="filters">
+          <label>From (date)
+            <input type="date" id="fStart" />
+          </label>
+          <label>To (date)
+            <input type="date" id="fEnd" />
+          </label>
+          <button class="btn primary" id="applyBtn">Apply</button>
+          <button class="btn" id="clearBtn">Clear</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Start</th><th>End</th><th>Duration (s)</th>
+              <th>Fresh</th><th>Rotten</th><th>Unripe</th><th>Unknown</th><th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="rowsBody">
+            <tr><td colspan="9" style="text-align:center;color:#666;">Loading…</td></tr>
+          </tbody>
+        </table>
+
+        </body></html>
+      `;
+
+      // Write skeleton and then manipulate DOM from the parent
+      const doc = win.document;
+      doc.open(); doc.write(skeleton); doc.close();
+
+      const fStart  = doc.getElementById('fStart');
+      const fEnd    = doc.getElementById('fEnd');
+      const applyBtn= doc.getElementById('applyBtn');
+      const clearBtn= doc.getElementById('clearBtn');
+      const rowsBody= doc.getElementById('rowsBody');
+
+      // Default range: last 7 days
+      (function setDefaults(){
+        const pad = n => String(n).padStart(2,'0');
+        const toDateStr = d => d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate());
+        const today = new Date();
+        const weekAgo = new Date(); weekAgo.setDate(today.getDate() - 7);
+        fEnd.value = toDateStr(today);
+        fStart.value = toDateStr(weekAgo);
+      })();
+
+      function buildQuery(){
+        const qs = [];
+        if (fStart.value) qs.push('start_date=' + encodeURIComponent(fStart.value + 'T00:00:00'));
+        if (fEnd.value)   qs.push('end_date='   + encodeURIComponent(fEnd.value   + 'T23:59:59'));
+        return qs.length ? ('?' + qs.join('&')) : '';
+      }
+
+      async function loadRows(){
+        rowsBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;">Loading…</td></tr>';
+        try{
+          const res = await fetch('/api/history' + buildQuery(), {cache:'no-store'});
+          const data = await res.json();
+
+          if (!Array.isArray(data) || data.length === 0){
+            rowsBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#666;">No sessions found for the selected range</td></tr>';
+            return;
+          }
+
+          let html = '';
+          data.forEach((r, i) => {
+            const f  = parseInt(r.fresh_count  || 0, 10);
+            const ro = parseInt(r.rotten_count || 0, 10);
+            const u  = parseInt(r.unripe_count || 0, 10);
+            const un = parseInt(r.unknown_count|| 0, 10);
+            const total = f + ro + u + un;
+            html += '<tr>'
+                 + `<td>${i+1}</td>`
+                 + `<td>${r.session_start || ''}</td>`
+                 + `<td>${r.session_end || ''}</td>`
+                 + `<td>${(r.duration_sec ?? '')}</td>`
+                 + `<td>${f}</td><td>${ro}</td><td>${u}</td><td>${un}</td><td>${total}</td>`
+                 + '</tr>';
+          });
+          rowsBody.innerHTML = html;
+        }catch(e){
+          console.error(e);
+          rowsBody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#b91c1c;">Error loading history</td></tr>';
+        }
+      }
+
+      applyBtn.addEventListener('click', loadRows);
+      clearBtn.addEventListener('click', () => { fStart.value=''; fEnd.value=''; loadRows(); });
+      loadRows();
+    }
+    // ------------------------------------------------------------------------------
+
+    async function startVideo(){
+      statusText.textContent = 'Starting…';
+      videoFeed.src = "{{ url_for('video_feed') }}";
+      videoFeed.classList.remove('hidden');
+      placeholder.classList.add('hidden');
+      startBtn.classList.add('hidden');
+      stopBtn.classList.remove('hidden');
+      statusText.textContent = 'Monitoring';
+
+      countsTimer = setInterval(updateCounts, 500);
+      sessionTimer = setInterval(updateSession, 1000);
+    }
+
+    async function stopVideo(){
+      statusText.textContent = 'Stopping…';
+      if (countsTimer){ clearInterval(countsTimer); countsTimer = null; }
+      if (sessionTimer){ clearInterval(sessionTimer); sessionTimer = null; }
+
+      videoFeed.src = '';
+      videoFeed.classList.add('hidden');
+      placeholder.classList.remove('hidden');
+
+      try{ await fetch('/stop_video'); }catch(e){ console.error(e); }
+
+      stopBtn.classList.add('hidden');
+      startBtn.classList.remove('hidden');
+      statusText.textContent = 'Stopped (session saved)';
+    }
+
+    document.getElementById('historyBtn').addEventListener('click', openHistory);
+    startBtn.addEventListener('click', startVideo);
+    stopBtn.addEventListener('click', stopVideo);
+
+    window.addEventListener('beforeunload', () => {
+      if (!stopBtn.classList.contains('hidden')) {
+        navigator.sendBeacon('/stop_video');
+      }
+    });
+  </script>
+</body>
+</html>
